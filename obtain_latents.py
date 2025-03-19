@@ -1,12 +1,9 @@
 # https://arxiv.org/pdf/2112.10752.pdf
 # https://github.com/ekagra-ranjan/huggingface-blog/blob/main/stable_diffusion.md
-import tempfile
-from pathlib import Path
 import argparse
 from collections import namedtuple
 from typing import Dict, Any
 
-from PIL import Image
 import numpy as np
 from tinygrad import TinyJit, dtypes
 from tinygrad.tensor import Tensor
@@ -15,7 +12,7 @@ from tinygrad.helpers import Timing, Context, getenv, fetch, colored, tqdm, Glob
 from tinygrad.nn import Conv2d, GroupNorm
 from tinygrad.nn.state import torch_load, load_state_dict, get_state_dict
 from clip import Closed, Tokenizer
-from unet_sampler import UNetModel
+from unet import UNetModel
 
 class AttnBlock:
   def __init__(self, in_channels):
