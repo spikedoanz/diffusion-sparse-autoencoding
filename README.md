@@ -1,7 +1,15 @@
 ```
+git clone git@github.com:spikedoanz/diffusion-sparse-autoencoding.git
+cd diffusion-sparse-autoencoding
 python3 -m venv .venv
 source .venv/bin/activate
 pip install tinygrad
 
-python sdxl.py
+python sdxl.py # or stable_diffusion.py
 ```
+
+fetch prompts from https://www.kaggle.com/datasets/tanreinama/900k-diffusion-prompts-dataset/data
+
+and put into ./data/
+
+then run sample.py
