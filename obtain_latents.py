@@ -177,8 +177,8 @@ class StableDiffusion:
     return x_prev, pred_x0
 
   def get_model_output(self, unconditional_context, context, latent, timestep, unconditional_guidance_scale):
-    # put into diffuser
-    latents = self.model.diffusion_model(latent.expand(2, *latent.shape[1:]), timestep, unconditional_context.cat(context, dim=0))
+    prior = latent.expand(2, *latent.shape[1:])
+    latents = self.model.diffusion_model(prior, timestep, unconditional_context.cat(context, dim=0))
     unconditional_latent, latent = latents[0:1], latents[1:2]
 
     e_t = unconditional_latent + unconditional_guidance_scale * (latent - unconditional_latent)
@@ -201,96 +201,74 @@ class StableDiffusion:
     #x_prev, pred_x0 = get_x_prev_and_pred_x0(latent, e_t_prime, index)
     return x_prev.realize()
 
-# ** ldm.models.autoencoder.AutoencoderKL (done!)
-# 3x512x512 <--> 4x64x64 (16384)
-# decode torch.Size([1, 4, 64, 64]) torch.Size([1, 3, 512, 512])
-# section 4.3 of paper
-# first_stage_model.encoder, first_stage_model.decoder
-
-# ** ldm.modules.diffusionmodules.openaimodel.UNetModel
-# this is what runs each time to sample. is this the LDM?
-# input:  4x64x64
-# output: 4x64x64
-# model.diffusion_model
-# it has attention?
-
-# ** ldm.modules.encoders.modules.FrozenCLIPEmbedder
-# cond_stage_model.transformer.text_model
-
 if __name__ == "__main__":
-  default_prompt = "a horse sized cat eating a bagel"
   parser = argparse.ArgumentParser(description='Run Stable Diffusion', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
   parser.add_argument('--steps', type=int, default=6, help="Number of steps in diffusion")
-  parser.add_argument('--prompt', type=str, default=default_prompt, help="Phrase to render")
-  parser.add_argument('--out', type=str, default=Path(tempfile.gettempdir()) / "rendered.png", help="Output filename")
-  parser.add_argument('--noshow', action='store_true', help="Don't show the image")
   parser.add_argument('--fp16', action='store_true', help="Cast the weights to float16")
   parser.add_argument('--timing', action='store_true', help="Print timing per step")
-  parser.add_argument('--seed', type=int, help="Set the random latent seed")
   parser.add_argument('--guidance', type=float, default=7.5, help="Prompt strength")
   args = parser.parse_args()
 
+
+  BS            = 1 # TODO: Higher BS
+  CSV_PATH      = "./data/latents.csv"
+  PROMPT_PATH   = "./data/sampled_prompts.csv"
+  prompts       = ["dog cahsldfkjasldfkjsalfdksajdlfkjalkdft", "cat", "monkey"]
+  SEED          = 1337
+
+
+  Tensor.manual_seed(SEED)
   Tensor.no_grad = True
-  model = StableDiffusion()
-
   # load in weights
+  model = StableDiffusion()
   load_state_dict(model, torch_load(fetch('https://huggingface.co/CompVis/stable-diffusion-v-1-4-original/resolve/main/sd-v1-4.ckpt', 'sd-v1-4.ckpt'))['state_dict'], strict=False)
-
   if args.fp16:
     for k,v in get_state_dict(model).items():
       if k.startswith("model"):
         v.replace(v.cast(dtypes.float16).realize())
 
-  # run through CLIP to get context
-  tokenizer = Tokenizer.ClipTokenizer()
-  prompt = Tensor([tokenizer.encode(args.prompt)])
-  context = model.cond_stage_model.transformer.text_model(prompt).realize()
-  print("got CLIP context", context.shape)
-
-  prompt = Tensor([tokenizer.encode("")])
-  unconditional_context = model.cond_stage_model.transformer.text_model(prompt).realize()
-  print("got unconditional CLIP context", unconditional_context.shape)
-
-  # done with clip model
-  del model.cond_stage_model
-
-  timesteps = list(range(1, 1000, 1000//args.steps))
-  print(f"running for {timesteps} timesteps")
-  alphas = model.alphas_cumprod[Tensor(timesteps)]
-  alphas_prev = Tensor([1.0]).cat(alphas[:-1])
-
-  # start with random noise
-  if args.seed is not None: Tensor.manual_seed(args.seed)
-  latent = Tensor.randn(1,4,64,64)
-
   @TinyJit
   def run(model, *x): return model(*x).realize()
 
-  # this is diffusion
-  with Context(BEAM=getenv("LATEBEAM")):
-    for index, timestep in (t:=tqdm(list(enumerate(timesteps))[::-1])):
-      GlobalCounters.reset()
-      t.set_description("%3d %3d" % (index, timestep))
-      with Timing("step in ", enabled=args.timing, on_exit=lambda _: f", using {GlobalCounters.mem_used/1e9:.2f} GB"):
-        tid = Tensor([index])
-        latent = run(model, unconditional_context, context, latent, Tensor([timestep]), alphas[tid], alphas_prev[tid], Tensor([args.guidance]))
-        if args.timing: Device[Device.DEFAULT].synchronize()
-    del run
 
-  # upsample latent space to image with autoencoder
-  x = model.decode(latent)
-  print(x.shape)
+  # TODO: need a tracker for which one we're done with
 
-  # save image
-  im = Image.fromarray(x.numpy())
-  print(f"saving {args.out}")
-  im.save(args.out)
-  # Open image.
-  if not args.noshow: im.show()
+  # Invariants
+  tokenizer = Tokenizer.ClipTokenizer()
+  empty_prompt = Tensor([tokenizer.encode("")])
+  timesteps = list(range(1, 1000, 1000//args.steps))
+  alphas = model.alphas_cumprod[Tensor(timesteps)]
+  alphas_prev = Tensor([1.0]).cat(alphas[:-1])
+  print(f"running for {timesteps} timesteps")
 
-  # validation!
-  if args.prompt == default_prompt and args.steps == 6 and args.seed == 0 and args.guidance == 7.5:
-    ref_image = Tensor(np.array(Image.open(Path(__file__).parent / "stable_diffusion_seed0.png")))
-    distance = (((x.cast(dtypes.float) - ref_image.cast(dtypes.float)) / ref_image.max())**2).mean().item()
-    assert distance < 3e-3, colored(f"validation failed with {distance=}", "red")  # higher distance with WINO
-    print(colored(f"output validated with {distance=}", "green"))
+  for prompt in prompts:
+    # run through CLIP to get context
+    tokenizer = Tokenizer.ClipTokenizer()
+    prompt = Tensor([tokenizer.encode(prompt)])
+    context = model.cond_stage_model.transformer.text_model(prompt).realize()
+    unconditional_context = model.cond_stage_model.transformer.text_model(empty_prompt).realize()
+    print("got CLIP context", context.shape)
+    print("got unconditional CLIP context", unconditional_context.shape)
+
+
+    """
+    # done with clip model
+    del model.cond_stage_model
+    """
+
+    # start with random noise
+    latent = Tensor.randn(1,4,64,64)
+
+    # this is diffusion
+    with Context(BEAM=getenv("LATEBEAM")):
+      for index, timestep in (t:=tqdm(list(enumerate(timesteps))[::-1])):
+        GlobalCounters.reset()
+        t.set_description("%3d %3d" % (index, timestep))
+        with Timing("step in ", enabled=args.timing, on_exit=lambda _: f", using {GlobalCounters.mem_used/1e9:.2f} GB"):
+          tid = Tensor([index])
+          latent = run(model, unconditional_context, context, latent, Tensor([timestep]), alphas[tid], alphas_prev[tid], Tensor([args.guidance]))
+          if args.timing: Device[Device.DEFAULT].synchronize()
+
+    # export latent
+    latent = latent.realize().numpy()
+    print(latent)
