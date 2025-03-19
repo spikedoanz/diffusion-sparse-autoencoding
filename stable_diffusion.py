@@ -8,14 +8,14 @@ from typing import Dict, Any
 
 from PIL import Image
 import numpy as np
-from tinygrad import TinyJit
+from tinygrad import TinyJit, dtypes
 from tinygrad.tensor import Tensor
 from tinygrad.device import Device
 from tinygrad.helpers import Timing, Context, getenv, fetch, colored, tqdm, GlobalCounters
 from tinygrad.nn import Conv2d, GroupNorm
 from tinygrad.nn.state import torch_load, load_state_dict, get_state_dict
 from clip import Closed, Tokenizer
-from unet import UNetModel
+from unet_sampler import UNetModel
 
 class AttnBlock:
   def __init__(self, in_channels):
