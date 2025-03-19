@@ -248,6 +248,7 @@ class UNetModel:
       saved_inputs.append(x)
     for bb in self.middle_block:
       x = run(x, bb)
+      print(x.shape)
     for b in self.output_blocks:
       x = x.cat(saved_inputs.pop(), dim=1)
       for bb in b:

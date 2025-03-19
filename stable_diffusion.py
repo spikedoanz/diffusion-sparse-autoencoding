@@ -8,6 +8,7 @@ from typing import Dict, Any
 
 from PIL import Image
 import numpy as np
+from tinygrad import TinyJit
 from tinygrad.tensor import Tensor
 from tinygrad.device import Device
 from tinygrad.helpers import Timing, Context, getenv, fetch, colored, tqdm, GlobalCounters
