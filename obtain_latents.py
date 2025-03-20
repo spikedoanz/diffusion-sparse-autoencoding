@@ -1,16 +1,18 @@
 # https://arxiv.org/pdf/2112.10752.pdf
 # https://github.com/ekagra-ranjan/huggingface-blog/blob/main/stable_diffusion.md
+
 import argparse
 from collections import namedtuple
 from typing import Dict, Any
 
+import hashlib
 import numpy as np
-from tinygrad import TinyJit, dtypes
-from tinygrad.tensor import Tensor
-from tinygrad.device import Device
+
+from tinygrad import Tensor, Device, TinyJit, dtypes, nn 
 from tinygrad.helpers import Timing, Context, getenv, fetch, colored, tqdm, GlobalCounters
 from tinygrad.nn import Conv2d, GroupNorm
 from tinygrad.nn.state import torch_load, load_state_dict, get_state_dict
+
 from clip import Closed, Tokenizer
 from unet import UNetModel
 
@@ -78,7 +80,6 @@ class Decoder:
     x = self.mid(x)
 
     for l in self.up[::-1]:
-      print("decode", x.shape)
       for b in l['block']: x = b(x)
       if 'upsample' in l:
         # https://pytorch.org/docs/stable/generated/torch.nn.functional.interpolate.html ?
@@ -200,7 +201,6 @@ class StableDiffusion:
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='Run Stable Diffusion', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-  parser.add_argument('--steps', type=int, default=6, help="Number of steps in diffusion")
   parser.add_argument('--fp16', action='store_true', help="Cast the weights to float16")
   parser.add_argument('--timing', action='store_true', help="Print timing per step")
   parser.add_argument('--guidance', type=float, default=7.5, help="Prompt strength")
@@ -208,10 +208,12 @@ if __name__ == "__main__":
 
 
   BS            = 1 # TODO: Higher BS
-  CSV_PATH      = "./data/latents.csv"
-  PROMPT_PATH   = "./data/sampled_prompts.csv"
+  STEPS         = 1 
   prompts       = ["dog cahsldfkjasldfkjsalfdksajdlfkjalkdft", "cat", "monkey"]
   SEED          = 1337
+
+  CSV_PATH      = "./data/latents.csv"
+  PROMPT_PATH   = "./data/sampled_prompts.csv"
 
 
   Tensor.manual_seed(SEED)
@@ -233,19 +235,17 @@ if __name__ == "__main__":
   # Invariants
   tokenizer = Tokenizer.ClipTokenizer()
   empty_prompt = Tensor([tokenizer.encode("")])
-  timesteps = list(range(1, 1000, 1000//args.steps))
+  timesteps = list(range(1, 1000, 1000//STEPS))
   alphas = model.alphas_cumprod[Tensor(timesteps)]
   alphas_prev = Tensor([1.0]).cat(alphas[:-1])
   print(f"running for {timesteps} timesteps")
 
-  for prompt in prompts:
+  for prompt_str in prompts:
     # run through CLIP to get context
     tokenizer = Tokenizer.ClipTokenizer()
-    prompt = Tensor([tokenizer.encode(prompt)])
+    prompt = Tensor([tokenizer.encode(prompt_str)])
     context = model.cond_stage_model.transformer.text_model(prompt).realize()
     unconditional_context = model.cond_stage_model.transformer.text_model(empty_prompt).realize()
-    print("got CLIP context", context.shape)
-    print("got unconditional CLIP context", unconditional_context.shape)
 
 
     """
@@ -267,5 +267,7 @@ if __name__ == "__main__":
           if args.timing: Device[Device.DEFAULT].synchronize()
 
     # export latent
-    latent = latent.realize().numpy()
-    print(latent)
+    latent = latent.realize()
+    filename = hashlib.sha256(prompt_str.encode()).hexdigest()
+    # TODO: shove the hyperparams in here
+    nn.state.safe_save({'data': latent}, f"data/latents/{filename}.safetensors")
