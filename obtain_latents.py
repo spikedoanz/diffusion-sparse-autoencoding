@@ -13,8 +13,8 @@ from tinygrad.helpers import Timing, Context, getenv, fetch, colored, tqdm, Glob
 from tinygrad.nn import Conv2d, GroupNorm
 from tinygrad.nn.state import torch_load, load_state_dict, get_state_dict
 
-from stable_diffusion.clip import Closed, Tokenizer
-from stable_diffusion.unet import UNetModel
+from utils.clip import Closed, Tokenizer
+from utils.unet import UNetModel
 
 class AttnBlock:
   def __init__(self, in_channels):
