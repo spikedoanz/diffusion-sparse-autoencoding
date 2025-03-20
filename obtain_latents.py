@@ -270,4 +270,9 @@ if __name__ == "__main__":
     latent = latent.realize()
     filename = hashlib.sha256(prompt_str.encode()).hexdigest()
     # TODO: shove the hyperparams in here
-    nn.state.safe_save({'data': latent}, f"data/latents/{filename}.safetensors")
+    metadata = {
+            'prompt'    : prompt_str,
+            'steps'     : STEPS,
+            'guidance'  : args.guidance,
+            }
+    nn.state.safe_save({'data': latent}, f"data/latents/{filename}.safetensors", metadata=metadata)
