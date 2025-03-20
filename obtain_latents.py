@@ -262,8 +262,11 @@ if __name__ == "__main__":
   alphas = model.alphas_cumprod[Tensor(timesteps)]
   alphas_prev = Tensor([1.0]).cat(alphas[:-1])
   print(f"running for {timesteps} timesteps")
-  
-  for prompt_str in tqdm(prompts):
+
+  progress_bar = tqdm(prompts, desc="Processing prompts") 
+  for prompt_str in progress_bar:
+    display_prompt = prompt_str[:40] + ('...' if len(prompt_str) > 40 else '')
+    progress_bar.set_description(f"Processing: {display_prompt}")
     # run through CLIP to get context
     tokenizer = Tokenizer.ClipTokenizer()
     prompt = Tensor([tokenizer.encode(prompt_str)])
@@ -301,5 +304,3 @@ if __name__ == "__main__":
     # Update tracking CSV
     latents_df = pd.concat([latents_df, pd.DataFrame([{'prompt': prompt_str, 'latent_path': latent_path}])])
     latents_df.to_csv(CSV_PATH, index=False)
-    
-    print(f"Processed {prompt_str} -> {latent_path}")

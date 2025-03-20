@@ -12,4 +12,12 @@ fetch prompts from https://www.kaggle.com/datasets/tanreinama/900k-diffusion-pro
 
 and put into ./data/
 
-then run sample.py
+then run sample.py to dedup the prompts
+
+
+
+obtain_latents.py will run through the prompts and generate latents.
+
+
+
+
