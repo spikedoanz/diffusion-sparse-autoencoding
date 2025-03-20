@@ -205,17 +205,45 @@ if __name__ == "__main__":
   parser.add_argument('--timing', action='store_true', help="Print timing per step")
   parser.add_argument('--guidance', type=float, default=7.5, help="Prompt strength")
   args = parser.parse_args()
-
-
   BS            = 1 # TODO: Higher BS
   STEPS         = 1 
-  prompts       = ["dog cahsldfkjasldfkjsalfdksajdlfkjalkdft", "cat", "monkey"]
   SEED          = 1337
-
   CSV_PATH      = "./data/latents.csv"
   PROMPT_PATH   = "./data/sampled_prompts.csv"
-
-
+  
+  # Load prompts from the sampled file
+  import pandas as pd
+  import os
+  
+  # Load or create the tracking CSV
+  if os.path.exists(CSV_PATH):
+    latents_df = pd.read_csv(CSV_PATH)
+    processed_prompts = set(latents_df['prompt'].tolist())
+  else:
+    latents_df = pd.DataFrame(columns=['prompt', 'latent_path'])
+    processed_prompts = set()
+  
+  # Load sampled prompts
+  try:
+    with open(PROMPT_PATH, 'r') as f:
+      all_prompts = [line.strip() for line in f.readlines() if line.strip()]
+    # Skip header if it exists
+    if all_prompts and all_prompts[0] == 'prompt':
+      all_prompts = all_prompts[1:]
+  except:
+    # Fallback to DataFrame approach if file format is different
+    prompts_df = pd.read_csv(PROMPT_PATH)
+    all_prompts = prompts_df['prompt'].tolist()
+  
+  # Filter out already processed prompts
+  prompts = [p for p in all_prompts if p not in processed_prompts]
+  
+  if not prompts:
+    print("All prompts have been processed!")
+    exit(0)
+    
+  print(f"Processing {len(prompts)} remaining prompts out of {len(all_prompts)} total")
+  
   Tensor.manual_seed(SEED)
   Tensor.no_grad = True
   # load in weights
@@ -225,13 +253,8 @@ if __name__ == "__main__":
     for k,v in get_state_dict(model).items():
       if k.startswith("model"):
         v.replace(v.cast(dtypes.float16).realize())
-
   @TinyJit
   def run(model, *x): return model(*x).realize()
-
-
-  # TODO: need a tracker for which one we're done with
-
   # Invariants
   tokenizer = Tokenizer.ClipTokenizer()
   empty_prompt = Tensor([tokenizer.encode("")])
@@ -239,40 +262,44 @@ if __name__ == "__main__":
   alphas = model.alphas_cumprod[Tensor(timesteps)]
   alphas_prev = Tensor([1.0]).cat(alphas[:-1])
   print(f"running for {timesteps} timesteps")
-
-  for prompt_str in prompts:
+  
+  for prompt_str in tqdm(prompts):
     # run through CLIP to get context
     tokenizer = Tokenizer.ClipTokenizer()
     prompt = Tensor([tokenizer.encode(prompt_str)])
     context = model.cond_stage_model.transformer.text_model(prompt).realize()
     unconditional_context = model.cond_stage_model.transformer.text_model(empty_prompt).realize()
-
-
     """
     # done with clip model
     del model.cond_stage_model
     """
-
     # start with random noise
     latent = Tensor.randn(1,4,64,64)
-
     # this is diffusion
     with Context(BEAM=getenv("LATEBEAM")):
-      for index, timestep in (t:=tqdm(list(enumerate(timesteps))[::-1])):
-        GlobalCounters.reset()
-        t.set_description("%3d %3d" % (index, timestep))
-        with Timing("step in ", enabled=args.timing, on_exit=lambda _: f", using {GlobalCounters.mem_used/1e9:.2f} GB"):
-          tid = Tensor([index])
-          latent = run(model, unconditional_context, context, latent, Tensor([timestep]), alphas[tid], alphas_prev[tid], Tensor([args.guidance]))
-          if args.timing: Device[Device.DEFAULT].synchronize()
-
+      for index, timestep in reversed(list(enumerate(timesteps))):
+        tid = Tensor([index])
+        latent = run(model, unconditional_context, context, latent, Tensor([timestep]), alphas[tid], alphas_prev[tid], Tensor([args.guidance]))
     # export latent
     latent = latent.realize()
-    filename = hashlib.sha256(prompt_str.encode()).hexdigest()
+    hash_value = hashlib.sha256(prompt_str.encode()).hexdigest()
+    # Format filename with steps and guidance
+    filename = f"s{STEPS}_g{args.guidance:.1f}_{hash_value}"
+    latent_path = f"data/latents/{filename}.safetensors"
     # TODO: shove the hyperparams in here
     metadata = {
             'prompt'    : prompt_str,
             'steps'     : STEPS,
             'guidance'  : args.guidance,
             }
-    nn.state.safe_save({'data': latent}, f"data/latents/{filename}.safetensors", metadata=metadata)
+    
+    # Ensure directory exists
+    os.makedirs("data/latents", exist_ok=True)
+    
+    nn.state.safe_save({'data': latent}, latent_path, metadata=metadata)
+    
+    # Update tracking CSV
+    latents_df = pd.concat([latents_df, pd.DataFrame([{'prompt': prompt_str, 'latent_path': latent_path}])])
+    latents_df.to_csv(CSV_PATH, index=False)
+    
+    print(f"Processed {prompt_str} -> {latent_path}")
