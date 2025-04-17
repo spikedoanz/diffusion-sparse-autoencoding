@@ -5,7 +5,7 @@ from tinygrad.nn import Linear, LayerNorm, Embedding, Conv2d
 from typing import List, Optional, Union, Tuple, Dict
 from abc import ABC, abstractmethod
 from functools import lru_cache
-from PIL import Image
+#from PIL import Image
 import numpy as np
 import re, gzip
 
@@ -409,6 +409,7 @@ clip_configs: Dict = {
   }
 }
 
+"""
 class OpenClipEncoder:
   def __init__(self, dims:int, text_cfg:Dict, vision_cfg:Dict, **_):
     self.visual = Open.ClipVisionTransformer(**vision_cfg)
@@ -461,3 +462,4 @@ class OpenClipEncoder:
     text_features /= text_features.square().sum(-1, keepdim=True).sqrt() # Frobenius Norm
 
     return (image_features * text_features).sum(axis=-1)
+"""
