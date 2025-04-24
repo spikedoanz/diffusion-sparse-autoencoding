@@ -1,0 +1,3 @@
+{"projection": "PCA 2D", "silhouette": 0.9580768942832947, "trustworthiness": 0.7272164739298033}
+{"projection": "UMAP 2D", "silhouette": 0.41210058331489563, "trustworthiness": 0.8870866301481031}
+{"projection": "t\u2011SNE 2D", "silhouette": 0.3593149185180664, "trustworthiness": 0.9095049705822682}

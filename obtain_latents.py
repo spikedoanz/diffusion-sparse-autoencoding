@@ -206,7 +206,7 @@ if __name__ == "__main__":
   parser.add_argument('--guidance', type=float, default=7.5, help="Prompt strength")
   args = parser.parse_args()
   BS            = 1 # TODO: Higher BS
-  STEPS         = 1 
+  STEPS         = 5
   SEED          = 1337
   CSV_PATH      = "./data/latents.csv"
   PROMPT_PATH   = "./data/sampled_prompts.csv"
